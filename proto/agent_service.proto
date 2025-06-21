@@ -4,53 +4,77 @@ syntax = "proto3";
 
 package proto;
 
-// تحديد مسار الحزمة في Go ليكون "agent_server/proto"
-option go_package = "agent_server/proto";
+import "google/protobuf/timestamp.proto";
 
-// تعريف الخدمة الرئيسية التي سيقدمها السيرفر
+option go_package = "agent_server/proto"; 
+
+// --------------------------- Enums (تحسين) ---------------------------
+enum AgentStatus {
+    UNKNOWN = 0;
+    ONLINE = 1;
+    OFFLINE = 2;
+    DECOMMISSIONED = 3; 
+}
+
+enum FirewallAction {
+    ACTION_UNKNOWN = 0;
+    ALLOW = 1;
+    DENY = 2;
+}
+
+// --------------------------- SERVICES (الخدمات) ---------------------------
 service AgentService {
-    // RPC لتسجيل Agent جديد
+    // 1. التسجيل
     rpc RegisterAgent(RegisterRequest) returns (RegisterResponse);
 
-    // RPC لإرسال تقرير عن حالة جدار الحماية
+    // 2. البحث
+    rpc FindAgent(FindAgentRequest) returns (FindAgentResponse);
+
+    // 3. إرسال نبضة دورية لتحديث الحالة
+    rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse); 
+
+    // 4. إرسال تقرير بقواعد جدار الحماية
     rpc ReportFirewallStatus(FirewallReportRequest) returns (FirewallReportResponse);
 
-    // RPC للبحث عن Agent أو التحقق من حالته
-    rpc FindAgent(FindAgentRequest) returns (FindAgentResponse);
+    // 5. إرسال تقرير بالتطبيقات المثبتة
+    rpc ReportInstalledApps(ReportAppsRequest) returns (ReportAppsResponse); 
 }
 
-// === رسائل التسجيل (Registration Messages) ===
+
+// --------------------------- MESSAGES (الرسائل) ---------------------------
+
+// --- رسائل التسجيل والبحث والنبضة ---
+
+// رسالة موحدة تمثل العميل بكل تفاصيله
+message Agent {
+    string agent_id = 1;       
+    string hostname = 2;
+    
+    // معلومات نظام التشغيل
+    string os_name = 3;
+    string os_version = 4;
+    string kernel_version = 5;
+
+    // معلومات العتاد
+    int32 cpu_cores = 6;
+    double memory_gb = 7;
+    double disk_space_gb = 8;
+    
+    // معلومات الحالة والشبكة المحدثة
+    AgentStatus status = 9;                        
+    google.protobuf.Timestamp last_seen = 10;      
+    string last_known_ip = 11;                     
+}
 
 message RegisterRequest {
-    string agent_id = 1;
-    string hostname = 2;
-    string ip_address = 3;
+    Agent agent_details = 1; 
 }
-
+// يامر الوكيل عند التسجيل سوف يرجع هاذي يامر الوكيل بارسال لي نبظه كل خمس داقائق 
 message RegisterResponse {
     bool success = 1;
     string message = 2;
+    int32 report_interval_seconds = 3;
 }
-
-// === رسائل تقرير جدار الحماية (Firewall Report Messages) ===
-
-message FirewallRule {
-    string name = 1;
-    string port = 2;
-    string protocol = 3; // "TCP", "UDP"
-    string action = 4;   // "ALLOW", "DENY"
-}
-
-message FirewallReportRequest {
-    string agent_id = 1;
-    repeated FirewallRule rules = 2; // قائمة بقواعد جدار الحماية
-}
-
-message FirewallReportResponse {
-    bool received = 1;
-}
-
-// === رسائل البحث عن Agent (FindAgent Messages) ===
 
 message FindAgentRequest {
     string agent_id = 1;
@@ -58,8 +82,51 @@ message FindAgentRequest {
 
 message FindAgentResponse {
     bool found = 1;
-    string agent_id = 2;
-    string hostname = 3;
-    string ip_address = 4;
-    string last_seen = 5; // وقت آخر تواصل
+    Agent agent = 2; 
+}
+
+message HeartbeatRequest {
+    string agent_id = 1;
+    string current_ip = 2; 
+}
+
+message HeartbeatResponse {
+    bool acknowledged = 1; 
+}
+
+
+// --- رسائل تقرير جدار الحماية ---
+
+message FirewallRule {
+    string name = 1;
+    string port = 2;
+    string protocol = 3;
+    FirewallAction action = 4; 
+}
+
+message FirewallReportRequest {
+    string agent_id = 1;
+    repeated FirewallRule rules = 2;
+}
+
+message FirewallReportResponse {
+    bool received = 1;
+}
+
+// --- رسائل تقرير التطبيقات المثبتة ---
+
+message ApplicationInfo {
+    string name = 1;
+    string version = 2;
+    string publisher = 3;
+    string install_date = 4; 
+}
+
+message ReportAppsRequest {
+    string agent_id = 1;
+    repeated ApplicationInfo applications = 2;
+}
+
+message ReportAppsResponse {
+    bool received = 1;
 }

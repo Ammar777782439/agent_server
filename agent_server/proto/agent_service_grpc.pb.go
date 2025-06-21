@@ -22,12 +22,16 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentServiceClient interface {
-	// RPC لتسجيل Agent جديد
+	// 1. التسجيل
 	RegisterAgent(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
-	// RPC لإرسال تقرير عن حالة جدار الحماية
-	ReportFirewallStatus(ctx context.Context, in *FirewallReportRequest, opts ...grpc.CallOption) (*FirewallReportResponse, error)
-	// RPC للبحث عن Agent أو التحقق من حالته
+	// 2. البحث
 	FindAgent(ctx context.Context, in *FindAgentRequest, opts ...grpc.CallOption) (*FindAgentResponse, error)
+	// 3. إرسال نبضة دورية لتحديث الحالة
+	SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
+	// 4. إرسال تقرير بقواعد جدار الحماية
+	ReportFirewallStatus(ctx context.Context, in *FirewallReportRequest, opts ...grpc.CallOption) (*FirewallReportResponse, error)
+	// 5. إرسال تقرير بالتطبيقات المثبتة
+	ReportInstalledApps(ctx context.Context, in *ReportAppsRequest, opts ...grpc.CallOption) (*ReportAppsResponse, error)
 }
 
 type agentServiceClient struct {
@@ -47,6 +51,24 @@ func (c *agentServiceClient) RegisterAgent(ctx context.Context, in *RegisterRequ
 	return out, nil
 }
 
+func (c *agentServiceClient) FindAgent(ctx context.Context, in *FindAgentRequest, opts ...grpc.CallOption) (*FindAgentResponse, error) {
+	out := new(FindAgentResponse)
+	err := c.cc.Invoke(ctx, "/proto.AgentService/FindAgent", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
+	out := new(HeartbeatResponse)
+	err := c.cc.Invoke(ctx, "/proto.AgentService/SendHeartbeat", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) ReportFirewallStatus(ctx context.Context, in *FirewallReportRequest, opts ...grpc.CallOption) (*FirewallReportResponse, error) {
 	out := new(FirewallReportResponse)
 	err := c.cc.Invoke(ctx, "/proto.AgentService/ReportFirewallStatus", in, out, opts...)
@@ -56,9 +78,9 @@ func (c *agentServiceClient) ReportFirewallStatus(ctx context.Context, in *Firew
 	return out, nil
 }
 
-func (c *agentServiceClient) FindAgent(ctx context.Context, in *FindAgentRequest, opts ...grpc.CallOption) (*FindAgentResponse, error) {
-	out := new(FindAgentResponse)
-	err := c.cc.Invoke(ctx, "/proto.AgentService/FindAgent", in, out, opts...)
+func (c *agentServiceClient) ReportInstalledApps(ctx context.Context, in *ReportAppsRequest, opts ...grpc.CallOption) (*ReportAppsResponse, error) {
+	out := new(ReportAppsResponse)
+	err := c.cc.Invoke(ctx, "/proto.AgentService/ReportInstalledApps", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,12 +91,16 @@ func (c *agentServiceClient) FindAgent(ctx context.Context, in *FindAgentRequest
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility
 type AgentServiceServer interface {
-	// RPC لتسجيل Agent جديد
+	// 1. التسجيل
 	RegisterAgent(context.Context, *RegisterRequest) (*RegisterResponse, error)
-	// RPC لإرسال تقرير عن حالة جدار الحماية
-	ReportFirewallStatus(context.Context, *FirewallReportRequest) (*FirewallReportResponse, error)
-	// RPC للبحث عن Agent أو التحقق من حالته
+	// 2. البحث
 	FindAgent(context.Context, *FindAgentRequest) (*FindAgentResponse, error)
+	// 3. إرسال نبضة دورية لتحديث الحالة
+	SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
+	// 4. إرسال تقرير بقواعد جدار الحماية
+	ReportFirewallStatus(context.Context, *FirewallReportRequest) (*FirewallReportResponse, error)
+	// 5. إرسال تقرير بالتطبيقات المثبتة
+	ReportInstalledApps(context.Context, *ReportAppsRequest) (*ReportAppsResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -85,11 +111,17 @@ type UnimplementedAgentServiceServer struct {
 func (UnimplementedAgentServiceServer) RegisterAgent(context.Context, *RegisterRequest) (*RegisterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterAgent not implemented")
 }
+func (UnimplementedAgentServiceServer) FindAgent(context.Context, *FindAgentRequest) (*FindAgentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FindAgent not implemented")
+}
+func (UnimplementedAgentServiceServer) SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendHeartbeat not implemented")
+}
 func (UnimplementedAgentServiceServer) ReportFirewallStatus(context.Context, *FirewallReportRequest) (*FirewallReportResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportFirewallStatus not implemented")
 }
-func (UnimplementedAgentServiceServer) FindAgent(context.Context, *FindAgentRequest) (*FindAgentResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FindAgent not implemented")
+func (UnimplementedAgentServiceServer) ReportInstalledApps(context.Context, *ReportAppsRequest) (*ReportAppsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportInstalledApps not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 
@@ -122,24 +154,6 @@ func _AgentService_RegisterAgent_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AgentService_ReportFirewallStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FirewallReportRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AgentServiceServer).ReportFirewallStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.AgentService/ReportFirewallStatus",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgentServiceServer).ReportFirewallStatus(ctx, req.(*FirewallReportRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _AgentService_FindAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FindAgentRequest)
 	if err := dec(in); err != nil {
@@ -158,6 +172,60 @@ func _AgentService_FindAgent_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_SendHeartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).SendHeartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.AgentService/SendHeartbeat",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).SendHeartbeat(ctx, req.(*HeartbeatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ReportFirewallStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FirewallReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ReportFirewallStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.AgentService/ReportFirewallStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ReportFirewallStatus(ctx, req.(*FirewallReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_ReportInstalledApps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportAppsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ReportInstalledApps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.AgentService/ReportInstalledApps",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ReportInstalledApps(ctx, req.(*ReportAppsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -170,12 +238,20 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AgentService_RegisterAgent_Handler,
 		},
 		{
+			MethodName: "FindAgent",
+			Handler:    _AgentService_FindAgent_Handler,
+		},
+		{
+			MethodName: "SendHeartbeat",
+			Handler:    _AgentService_SendHeartbeat_Handler,
+		},
+		{
 			MethodName: "ReportFirewallStatus",
 			Handler:    _AgentService_ReportFirewallStatus_Handler,
 		},
 		{
-			MethodName: "FindAgent",
-			Handler:    _AgentService_FindAgent_Handler,
+			MethodName: "ReportInstalledApps",
+			Handler:    _AgentService_ReportInstalledApps_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

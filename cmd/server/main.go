@@ -7,84 +7,195 @@ import (
 	"log"
 	"net"
 
-	pb "agent_server/agent_server/proto" // استيراد الكود الذي تم توليده من مجلد proto
+	"agent_server/pkg/config"
+	"agent_server/pkg/database"
+	pb "agent_server/agent_server/proto"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"gorm.io/gorm"
 )
 
-// تعريف هيكل السيرفر. يجب أن يتضمن الواجهة غير المنفذة (unimplemented) لضمان التوافق المستقبلي
+const (
+	port = ":50051"
+	// سيطلب السيرفر من العميل إرسال نبضة كل 5 دقائق (300 ثانية)
+	reportIntervalSeconds = 300
+)
+
+// agentServer هو تطبيقنا للخدمة، ويحتوي الآن على اتصال بقاعدة البيانات
 type agentServer struct {
 	pb.UnimplementedAgentServiceServer
+	db *gorm.DB
 }
 
-// تنفيذ دالة تسجيل الـ Agent
+// newServer ينشئ نسخة جديدة من السيرفر مع اتصال قاعدة البيانات
+func newServer(db *gorm.DB) *agentServer {
+	return &agentServer{db: db}
+}
+
+// --- دوال التحويل بين Protobuf و GORM ---
+
+// toDBAgent يحول من protobuf Agent إلى GORM Agent
+func toDBAgent(pbAgent *pb.Agent) *database.Agent {
+	return &database.Agent{
+		ID:            pbAgent.GetAgentId(),
+		Hostname:      pbAgent.GetHostname(),
+		OSName:        pbAgent.GetOsName(),
+		OSVersion:     pbAgent.GetOsVersion(),
+		KernelVersion: pbAgent.GetKernelVersion(),
+		CPUCores:      pbAgent.GetCpuCores(),
+		MemoryGB:      pbAgent.GetMemoryGb(),
+		DiskSpaceGB:   pbAgent.GetDiskSpaceGb(),
+		Status:        pbAgent.GetStatus().String(), // تحويل الـ enum إلى نص
+		LastSeen:      pbAgent.GetLastSeen().AsTime(),
+		LastKnownIP:   pbAgent.GetLastKnownIp(),
+	}
+}
+
+// toPBAgent يحول من GORM Agent إلى protobuf Agent
+func toPBAgent(dbAgent *database.Agent) *pb.Agent {
+	return &pb.Agent{
+		AgentId:       dbAgent.ID,
+		Hostname:      dbAgent.Hostname,
+		OsName:        dbAgent.OSName,
+		OsVersion:     dbAgent.OSVersion,
+		KernelVersion: dbAgent.KernelVersion,
+		CpuCores:      dbAgent.CPUCores,
+		MemoryGb:      dbAgent.MemoryGB,
+		DiskSpaceGb:   dbAgent.DiskSpaceGB,
+		Status:        pb.AgentStatus(pb.AgentStatus_value[dbAgent.Status]), // تحويل النص إلى enum
+		LastSeen:      timestamppb.New(dbAgent.LastSeen),
+		LastKnownIp:   dbAgent.LastKnownIP,
+	}
+}
+
+// --- دوال RPC المنفذة ---
+
 func (s *agentServer) RegisterAgent(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	log.Printf("Received registration request from agent: ID=%s, Hostname=%s, IP=%s", req.GetAgentId(), req.GetHostname(), req.GetIpAddress())
-	
-	// هنا يمكنك كتابة منطق حفظ بيانات الـ Agent في قاعدة بيانات
-	// على سبيل المثال: db.SaveAgent(req)
+	details := req.GetAgentDetails()
+	if details == nil || details.GetAgentId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Agent details and ID are required")
+	}
+
+	p, _ := peer.FromContext(ctx)
+	clientIP := p.Addr.String()
+
+	log.Printf("Received registration request from Agent ID: %s at IP: %s", details.GetAgentId(), clientIP)
+
+	// تحديث تفاصيل العميل قبل الحفظ
+	details.LastKnownIp = clientIP
+	details.Status = pb.AgentStatus_ONLINE
+	details.LastSeen = timestamppb.Now()
+
+	dbAgent := toDBAgent(details)
+
+	// استخدام GORM لحفظ البيانات (Create or Update)
+	if err := s.db.Save(dbAgent).Error; err != nil {
+		log.Printf("Failed to save agent to database: %v", err)
+		return nil, status.Errorf(codes.Internal, "Could not save agent data")
+	}
+
+	log.Printf("Agent %s registered/updated successfully.", dbAgent.ID)
 
 	return &pb.RegisterResponse{
-		Success: true,
-		Message: "Agent registered successfully",
+		Success:              true,
+		Message:              "Agent registered successfully.",
+		ReportIntervalSeconds: reportIntervalSeconds,
 	}, nil
 }
 
-// تنفيذ دالة استقبال تقرير جدار الحماية
-func (s *agentServer) ReportFirewallStatus(ctx context.Context, req *pb.FirewallReportRequest) (*pb.FirewallReportResponse, error) {
-	log.Printf("Received firewall report from agent: ID=%s. Report contains %d rules.", req.GetAgentId(), len(req.GetRules()))
-	
-	// هنا يمكنك تحليل القواعد وتخزينها أو إطلاق تنبيهات بناءً عليها
-	for _, rule := range req.GetRules() {
-		log.Printf("  - Rule: %s, Port: %s, Protocol: %s, Action: %s", rule.GetName(), rule.GetPort(), rule.GetProtocol(), rule.GetAction())
-	}
-
-	return &pb.FirewallReportResponse{
-		Received: true,
-	}, nil
-}
-
-// تنفيذ دالة البحث عن Agent
 func (s *agentServer) FindAgent(ctx context.Context, req *pb.FindAgentRequest) (*pb.FindAgentResponse, error) {
 	agentID := req.GetAgentId()
+	if agentID == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Agent ID is required")
+	}
+
 	log.Printf("Received find request for agent: ID=%s", agentID)
 
-	// هنا يمكنك البحث عن الـ Agent في قاعدة البيانات
-	// في هذا المثال، سنقوم بإرجاع بيانات وهمية إذا كان الـ ID موجوداً
-	if agentID == "agent-123" {
-		return &pb.FindAgentResponse{
-			Found:      true,
-			AgentId:    "agent-123",
-			Hostname:   "prod-server-01",
-			IpAddress:  "192.168.1.100",
-			LastSeen:   "2025-06-21T15:00:00Z",
-		}, nil
+	var dbAgent database.Agent
+	if err := s.db.First(&dbAgent, "id = ?", agentID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return &pb.FindAgentResponse{Found: false}, nil
+		}
+		log.Printf("Failed to find agent in database: %v", err)
+		return nil, status.Errorf(codes.Internal, "Database error")
 	}
-	
-	return &pb.FindAgentResponse{
-		Found: false,
-	}, nil
+
+	return &pb.FindAgentResponse{Found: true, Agent: toPBAgent(&dbAgent)}, nil
+}
+
+func (s *agentServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+	agentID := req.GetAgentId()
+	if agentID == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Agent ID is required")
+	}
+
+	// تحديث الحقول المحددة فقط باستخدام GORM
+	updates := map[string]interface{}{
+		"status":        pb.AgentStatus_ONLINE.String(),
+		"last_seen":     timestamppb.Now().AsTime(),
+		"last_known_ip": req.GetCurrentIp(),
+	}
+
+	result := s.db.Model(&database.Agent{}).Where("id = ?", agentID).Updates(updates)
+	if result.Error != nil {
+		log.Printf("Failed to update heartbeat: %v", result.Error)
+		return nil, status.Errorf(codes.Internal, "Could not update agent status")
+	}
+
+	if result.RowsAffected == 0 {
+		log.Printf("Heartbeat from unknown agent: %s", agentID)
+		return nil, status.Errorf(codes.NotFound, "Agent not registered")
+	}
+
+	log.Printf("Heartbeat received from agent: %s", agentID)
+	return &pb.HeartbeatResponse{Acknowledged: true}, nil
+}
+
+func (s *agentServer) ReportFirewallStatus(ctx context.Context, req *pb.FirewallReportRequest) (*pb.FirewallReportResponse, error) {
+	agentID := req.GetAgentId()
+	log.Printf("Received firewall report from agent: %s. Contains %d rules.", agentID, len(req.GetRules()))
+	// ملاحظة: في تطبيق حقيقي، ستقوم بإنشاء نموذج GORM لـ FirewallRule
+	// وتحفظ هذه البيانات في جدول منفصل مرتبط بالـ Agent.
+	return &pb.FirewallReportResponse{Received: true}, nil
+}
+
+func (s *agentServer) ReportInstalledApps(ctx context.Context, req *pb.ReportAppsRequest) (*pb.ReportAppsResponse, error) {
+	agentID := req.GetAgentId()
+	log.Printf("Received installed apps report from agent: %s. Contains %d apps.", agentID, len(req.GetApplications()))
+	// ملاحظة: في تطبيق حقيقي، ستقوم بإنشاء نموذج GORM لـ ApplicationInfo
+	// وتحفظ هذه البيانات.
+	return &pb.ReportAppsResponse{Received: true}, nil
 }
 
 func main() {
-	// تحديد المنفذ الذي سيعمل عليه السيرفر
-	port := ":50051"
-	lis, err := net.Listen("tcp", port)
+	// 1. تحميل الإعدادات
+	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
-		log.Fatalf("Failed to listen on port %s: %v", port, err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// إنشاء سيرفر gRPC جديد
-	s := grpc.NewServer()
-	
-	// تسجيل خدمتنا (agentServer) مع سيرفر gRPC
-	// هذا يخبر سيرفر gRPC كيف يتعامل مع الطلبات الواردة
-	pb.RegisterAgentServiceServer(s, &agentServer{})
+	// 2. الاتصال بقاعدة البيانات
+	db, err := database.ConnectDB(&cfg.Database)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	log.Println("Database connection successful.")
+
+	// 3. بدء السيرفر
+	lis, err := net.Listen("tcp", port)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterAgentServiceServer(grpcServer, newServer(db)) // تمرير اتصال DB
 
 	log.Printf("gRPC server listening on %s", port)
-
-	// تشغيل السيرفر وانتظار الاتصالات
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("Failed to serve gRPC server: %v", err)
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
 	}
 }

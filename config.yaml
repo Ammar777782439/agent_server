@@ -1,0 +1,8 @@
+db:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: "311" # It's good practice to quote passwords, even if numeric
+  dbname: agent_server
+  sslmode: disable
+  timezone: Asia/Bangkok
