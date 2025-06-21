@@ -13,18 +13,25 @@ import (
 
 // Agent هو نموذج GORM الذي يمثل جدول العملاء في قاعدة البيانات
 type Agent struct {
-	gorm.Model
-	AgentID        string    `gorm:"uniqueIndex;size:100"` // المعرّف النصي الفريد للعميل
-	Hostname       string
-	OSName         string
-	OSVersion      string
-	KernelVersion  string
-	CPUCores       int32
-	MemoryGB       float64
-	DiskSpaceGB    float64
-	Status         string // "ONLINE", "OFFLINE", etc.
-	LastSeen       time.Time
-	LastKnownIP    string
+	// GORM بيعتبر حقل "ID" (بالأحرف الكبيرة) هو المفتاح الأساسي التلقائي
+	// وهو اللي المفروض يتولد تلقائياً من قاعدة البيانات.
+	ID uint `gorm:"primaryKey;autoIncrement"` // تأكد من وجود هذا السطر بالظبط
+
+	AgentID       string `gorm:"uniqueIndex"` // agent_id هيكون الـ ID الفريد اللي بتستخدمه
+	Hostname      string
+	OSName        string
+	OSVersion     string
+	KernelVersion string
+	CPUCores      int32
+	MemoryGB      float64 // ممكن يكون double في proto و float64 في Go
+	DiskSpaceGB   float64 // ممكن يكون double في proto و float64 في Go
+	Status        string  // enum في proto، نص في DB
+	LastSeen      time.Time
+	LastKnownIP   string
+	// تاريخ الإنشاء والتحديث التلقائي من GORM
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"` // لإدارة Soft Delete لو بتستخدمها
 }
 
 // FirewallRule يمثل قاعدة جدار حماية واحدة يبلغ عنها العميل
