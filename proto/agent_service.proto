@@ -1,0 +1,65 @@
+// agent_server/proto/agent_service.proto
+
+syntax = "proto3";
+
+package proto;
+
+// تحديد مسار الحزمة في Go ليكون "agent_server/proto"
+option go_package = "agent_server/proto";
+
+// تعريف الخدمة الرئيسية التي سيقدمها السيرفر
+service AgentService {
+    // RPC لتسجيل Agent جديد
+    rpc RegisterAgent(RegisterRequest) returns (RegisterResponse);
+
+    // RPC لإرسال تقرير عن حالة جدار الحماية
+    rpc ReportFirewallStatus(FirewallReportRequest) returns (FirewallReportResponse);
+
+    // RPC للبحث عن Agent أو التحقق من حالته
+    rpc FindAgent(FindAgentRequest) returns (FindAgentResponse);
+}
+
+// === رسائل التسجيل (Registration Messages) ===
+
+message RegisterRequest {
+    string agent_id = 1;
+    string hostname = 2;
+    string ip_address = 3;
+}
+
+message RegisterResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+// === رسائل تقرير جدار الحماية (Firewall Report Messages) ===
+
+message FirewallRule {
+    string name = 1;
+    string port = 2;
+    string protocol = 3; // "TCP", "UDP"
+    string action = 4;   // "ALLOW", "DENY"
+}
+
+message FirewallReportRequest {
+    string agent_id = 1;
+    repeated FirewallRule rules = 2; // قائمة بقواعد جدار الحماية
+}
+
+message FirewallReportResponse {
+    bool received = 1;
+}
+
+// === رسائل البحث عن Agent (FindAgent Messages) ===
+
+message FindAgentRequest {
+    string agent_id = 1;
+}
+
+message FindAgentResponse {
+    bool found = 1;
+    string agent_id = 2;
+    string hostname = 3;
+    string ip_address = 4;
+    string last_seen = 5; // وقت آخر تواصل
+}
