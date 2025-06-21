@@ -1,3 +1,5 @@
+// cmd/server/main.go
+
 package main
 
 import (
@@ -7,6 +9,7 @@ import (
 	"agent_server/internal/config"
 	"agent_server/internal/repository"
 	"agent_server/internal/service"
+	"agent_server/internal/usecase" 
 	pb "agent_server/agent_server/proto"
 
 	"google.golang.org/grpc"
@@ -14,7 +17,7 @@ import (
 )
 
 const (
-	port = ":50051"
+	port       = ":50051"
 	configPath = "config.yaml"
 )
 
@@ -35,10 +38,13 @@ func main() {
 	// 3. إنشاء المستودع (Repository)
 	agentRepo := repository.NewAgentRepository(db)
 
-	// 4. إنشاء الخادم (Server/Handler) مع حقن المستودع
-	agentServer := service.NewAgentServer(agentRepo)
+	// 4. ***جديد***: إنشاء طبقة منطق العمل (Use Case)
+	agentLogic := usecase.NewAgentUseCase(agentRepo)
 
-	// 5. بدء خادم gRPC
+	// 5. إنشاء الخادم (Handler) مع حقن طبقة منطق العمل
+	agentServer := service.NewAgentServer(agentLogic)
+
+	// 6. بدء خادم gRPC
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("Failed to listen on port %s: %v", port, err)
@@ -46,7 +52,7 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterAgentServiceServer(grpcServer, agentServer)
-	reflection.Register(grpcServer) // تفعيل الانعكاس لتسهيل الاختبار
+	reflection.Register(grpcServer)
 
 	log.Printf("gRPC server listening on %s", port)
 	if err := grpcServer.Serve(lis); err != nil {

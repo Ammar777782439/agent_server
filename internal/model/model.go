@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Agent هو نموذج GORM الذي يمثل جدول العملاء في قاعدة البيانات
+// Agent  نموذج GORM الذي يمثل جدول الوكلاء في قاعدة البيانات
 type Agent struct {
 	ID            uint `gorm:"primaryKey;autoIncrement"`
 	AgentID       string `gorm:"uniqueIndex"`
@@ -25,7 +25,7 @@ type Agent struct {
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
 }
 
-// FirewallRule يمثل قاعدة جدار حماية واحدة يبلغ عنها العميل
+// FirewallRule نموذج GORM يمثل قاعدة جدار حماية واحدة يبلغ عنها الوكيل 
 type FirewallRule struct {
 	gorm.Model
 	AgentID   uint
@@ -37,7 +37,7 @@ type FirewallRule struct {
 	Enabled   bool
 }
 
-// InstalledApplication يمثل تطبيقًا واحدًا مثبتًا على نظام العميل
+// InstalledApplication نموذج GORM 	يمثل تطبيقًا واحدًا مثبتًا على نظام الوكيل
 type InstalledApplication struct {
 	gorm.Model
 	AgentID     uint

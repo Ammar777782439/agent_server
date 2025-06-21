@@ -1,18 +1,16 @@
+// internal/service/handler.go
+
 package service
 
 import (
+	"agent_server/internal/usecase"
+	pb "agent_server/agent_server/proto"
 	"context"
 	"errors"
 	"log"
-	"time"
-
-	"agent_server/internal/model"
-	"agent_server/internal/repository"
-	pb "agent_server/agent_server/proto"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 )
 
@@ -20,60 +18,35 @@ const (
 	reportIntervalSeconds = 300 // 5 minutes
 )
 
-// AgentServer implements the gRPC server.
-// It depends on the AgentRepository interface for data operations.
+// AgentServer now depends on the use case layer, not the repository.
 type AgentServer struct {
 	pb.UnimplementedAgentServiceServer
-	repo repository.AgentRepository
+	agentLogic usecase.AgentUseCase
 }
 
-// NewAgentServer creates a new AgentServer.
-func NewAgentServer(repo repository.AgentRepository) *AgentServer {
-	return &AgentServer{repo: repo}
+// NewAgentServer creates a new AgentServer with the injected business logic layer.
+func NewAgentServer(logic usecase.AgentUseCase) *AgentServer {
+	return &AgentServer{agentLogic: logic}
 }
 
+// RegisterAgent is now a thin layer that validates, maps, and calls the logic layer.
 func (s *AgentServer) RegisterAgent(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	agentDetails := req.GetAgentDetails()
-	if agentDetails == nil || agentDetails.GetAgentId() == "" {
+	agentDetailsProto := req.GetAgentDetails()
+	if agentDetailsProto == nil || agentDetailsProto.GetAgentId() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "Agent details and Agent ID are required")
 	}
 
-	log.Printf("Registration request for agent: %s", agentDetails.GetAgentId())
+	log.Printf("Registration request for agent: %s", agentDetailsProto.GetAgentId())
 
-	existingAgent, err := s.repo.FindAgentByID(agentDetails.GetAgentId())
-	if err == nil {
-		// Agent exists, update status
-		log.Printf("Agent %s already exists. Updating status.", existingAgent.AgentID)
-		existingAgent.Status = pb.AgentStatus_ONLINE.String()
-		existingAgent.LastSeen = time.Now()
-		if err := s.repo.UpdateAgent(existingAgent); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to update agent: %v", err)
-		}
-		return &pb.RegisterResponse{Success: true, Message: "Agent updated successfully", ReportIntervalSeconds: reportIntervalSeconds}, nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		// A different database error occurred
-		return nil, status.Errorf(codes.Internal, "database error: %v", err)
+	agentModel := mapProtoToModelAgent(agentDetailsProto)
+
+	_, err := s.agentLogic.RegisterAgent(agentModel)
+	if err != nil {
+		log.Printf("Failed to process agent registration for %s: %v", agentModel.AgentID, err)
+		return nil, status.Errorf(codes.Internal, "failed to register agent: %v", err)
 	}
 
-	// Agent does not exist, create new one
-	newAgent := &model.Agent{
-		AgentID:       agentDetails.GetAgentId(),
-		Hostname:      agentDetails.GetHostname(),
-		OSName:        agentDetails.GetOsName(),
-		OSVersion:     agentDetails.GetOsVersion(),
-		KernelVersion: agentDetails.GetKernelVersion(),
-		CPUCores:      agentDetails.GetCpuCores(),
-		MemoryGB:      agentDetails.GetMemoryGb(),
-		DiskSpaceGB:   agentDetails.GetDiskSpaceGb(),
-		Status:        pb.AgentStatus_ONLINE.String(),
-		LastSeen:      time.Now(),
-	}
-
-	if err := s.repo.CreateAgent(newAgent); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create agent: %v", err)
-	}
-
-	log.Printf("Successfully registered new agent: %s", newAgent.AgentID)
+	log.Printf("Successfully registered agent: %s", agentModel.AgentID)
 	return &pb.RegisterResponse{Success: true, Message: "Agent registered successfully", ReportIntervalSeconds: reportIntervalSeconds}, nil
 }
 
@@ -82,12 +55,11 @@ func (s *AgentServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatReques
 		return nil, status.Errorf(codes.InvalidArgument, "Agent ID is required")
 	}
 
-	rowsAffected, err := s.repo.UpdateHeartbeat(req.GetAgentId(), req.GetCurrentIp())
+	rowsAffected, err := s.agentLogic.ProcessHeartbeat(req.GetAgentId(), req.GetCurrentIp())
 	if err != nil {
 		log.Printf("Failed to update heartbeat for agent %s: %v", req.GetAgentId(), err)
 		return nil, status.Errorf(codes.Internal, "Could not update agent status")
 	}
-
 	if rowsAffected == 0 {
 		log.Printf("Heartbeat from unknown agent: %s", req.GetAgentId())
 		return nil, status.Errorf(codes.NotFound, "Agent not registered")
@@ -98,26 +70,14 @@ func (s *AgentServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatReques
 }
 
 func (s *AgentServer) ReportFirewallStatus(ctx context.Context, req *pb.FirewallStatusRequest) (*pb.FirewallStatusResponse, error) {
-	agent, err := s.repo.FindAgentByID(req.AgentId)
+	rulesModel := mapProtoToModelFirewallRules(req.GetRules())
+
+	err := s.agentLogic.StoreFirewallRules(req.GetAgentId(), rulesModel)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "Agent not found")
-	}
-
-	var rules []model.FirewallRule
-	for _, ruleProto := range req.Rules {
-		rules = append(rules, model.FirewallRule{
-			AgentID:   agent.ID,
-			Name:      ruleProto.Name,
-			Port:      ruleProto.Port,
-			Protocol:  ruleProto.Protocol,
-			Action:    ruleProto.Action.String(),
-			Direction: ruleProto.Direction.String(),
-			Enabled:   ruleProto.Enabled,
-		})
-	}
-
-	if err := s.repo.CreateFirewallRules(rules); err != nil {
-		log.Printf("Failed to save firewall rules for agent %s: %v", req.AgentId, err)
+		log.Printf("Failed to save firewall rules for agent %s: %v", req.GetAgentId(), err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "Agent not found")
+		}
 		return nil, status.Errorf(codes.Internal, "Could not save firewall rules")
 	}
 
@@ -125,24 +85,14 @@ func (s *AgentServer) ReportFirewallStatus(ctx context.Context, req *pb.Firewall
 }
 
 func (s *AgentServer) ReportInstalledApps(ctx context.Context, req *pb.InstalledAppsRequest) (*pb.InstalledAppsResponse, error) {
-	agent, err := s.repo.FindAgentByID(req.AgentId)
+	appsModel := mapProtoToModelInstalledApps(req.GetApps())
+
+	err := s.agentLogic.StoreInstalledApps(req.GetAgentId(), appsModel)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "Agent not found")
-	}
-
-	var apps []model.InstalledApplication
-	for _, appProto := range req.Apps {
-		apps = append(apps, model.InstalledApplication{
-			AgentID:     agent.ID,
-			Name:        appProto.Name,
-			Version:     appProto.Version,
-			InstallDate: appProto.InstallDate.AsTime(),
-			Publisher:   appProto.Publisher,
-		})
-	}
-
-	if err := s.repo.CreateInstalledApps(apps); err != nil {
-		log.Printf("Failed to save installed apps for agent %s: %v", req.AgentId, err)
+		log.Printf("Failed to save installed apps for agent %s: %v", req.GetAgentId(), err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "Agent not found")
+		}
 		return nil, status.Errorf(codes.Internal, "Could not save installed apps")
 	}
 
@@ -150,7 +100,7 @@ func (s *AgentServer) ReportInstalledApps(ctx context.Context, req *pb.Installed
 }
 
 func (s *AgentServer) FindAgent(ctx context.Context, req *pb.FindAgentRequest) (*pb.FindAgentResponse, error) {
-	agent, err := s.repo.FindAgentByID(req.GetAgentId())
+	agentModel, err := s.agentLogic.GetAgentByID(req.GetAgentId())
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return &pb.FindAgentResponse{Found: false}, nil
@@ -158,19 +108,7 @@ func (s *AgentServer) FindAgent(ctx context.Context, req *pb.FindAgentRequest) (
 		return nil, status.Errorf(codes.Internal, "Database error")
 	}
 
-	pbAgent := &pb.Agent{
-		AgentId:       agent.AgentID,
-		Hostname:      agent.Hostname,
-		OsName:        agent.OSName,
-		OsVersion:     agent.OSVersion,
-		KernelVersion: agent.KernelVersion,
-		CpuCores:      agent.CPUCores,
-		MemoryGb:      agent.MemoryGB,
-		DiskSpaceGb:   agent.DiskSpaceGB,
-		Status:        pb.AgentStatus(pb.AgentStatus_value[agent.Status]),
-		LastSeen:      timestamppb.New(agent.LastSeen),
-		LastKnownIp:   agent.LastKnownIP,
-	}
+	agentProto := mapModelToProtoAgent(agentModel)
 
-	return &pb.FindAgentResponse{Found: true, Agent: pbAgent}, nil
+	return &pb.FindAgentResponse{Found: true, Agent: agentProto}, nil
 }
