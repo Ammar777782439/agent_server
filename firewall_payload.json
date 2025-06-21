@@ -1,19 +1,19 @@
 {
-    "agent_id": "agent-grpcurl-007",
+    "agent_id": "ag3ent-grpc33url-0307",
     "rules": [
       {
-        "name": "Allow HTTPS",
-        "port": "443",
+        "name": "Allow HTTP",
+        "port": "80",
         "protocol": "TCP",
-        "action": "ACTION_ALLOW",
-        "direction": "DIRECTION_IN",
+        "action": "ALLOW",
+        "direction": "DIRECTION_IN", 
         "enabled": true
       },
       {
-        "name": "Block FTP",
-        "port": "21",
-        "protocol": "TCP",
-        "action": "ACTION_DENY",
+        "name": "Deny all outgoing",
+        "port": "ANY",
+        "protocol": "ANY",
+        "action": "DENY",
         "direction": "DIRECTION_OUT",
         "enabled": true
       }
