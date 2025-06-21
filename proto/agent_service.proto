@@ -16,6 +16,12 @@ enum AgentStatus {
     DECOMMISSIONED = 3; 
 }
 
+enum FirewallDirection {
+    DIRECTION_UNKNOWN = 0;
+    DIRECTION_IN = 1;
+    DIRECTION_OUT = 2;
+}
+
 enum FirewallAction {
     ACTION_UNKNOWN = 0;
     ALLOW = 1;
@@ -34,10 +40,10 @@ service AgentService {
     rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse); 
 
     // 4. إرسال تقرير بقواعد جدار الحماية
-    rpc ReportFirewallStatus(FirewallReportRequest) returns (FirewallReportResponse);
+    rpc ReportFirewallStatus(FirewallStatusRequest) returns (FirewallStatusResponse);
 
     // 5. إرسال تقرير بالتطبيقات المثبتة
-    rpc ReportInstalledApps(ReportAppsRequest) returns (ReportAppsResponse); 
+    rpc ReportInstalledApps(InstalledAppsRequest) returns (InstalledAppsResponse); 
 }
 
 
@@ -102,15 +108,18 @@ message FirewallRule {
     string port = 2;
     string protocol = 3;
     FirewallAction action = 4; 
+    FirewallDirection direction = 5;
+    bool enabled = 6;
 }
 
-message FirewallReportRequest {
+message FirewallStatusRequest {
     string agent_id = 1;
     repeated FirewallRule rules = 2;
 }
 
-message FirewallReportResponse {
-    bool received = 1;
+message FirewallStatusResponse {
+    bool success = 1;
+    string message = 2;
 }
 
 // --- رسائل تقرير التطبيقات المثبتة ---
@@ -119,14 +128,15 @@ message ApplicationInfo {
     string name = 1;
     string version = 2;
     string publisher = 3;
-    string install_date = 4; 
+    google.protobuf.Timestamp install_date = 4; 
 }
 
-message ReportAppsRequest {
+message InstalledAppsRequest {
     string agent_id = 1;
-    repeated ApplicationInfo applications = 2;
+    repeated ApplicationInfo apps = 2;
 }
 
-message ReportAppsResponse {
-    bool received = 1;
+message InstalledAppsResponse {
+    bool success = 1;
+    string message = 2;
 }

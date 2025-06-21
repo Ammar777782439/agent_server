@@ -29,9 +29,9 @@ type AgentServiceClient interface {
 	// 3. إرسال نبضة دورية لتحديث الحالة
 	SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	// 4. إرسال تقرير بقواعد جدار الحماية
-	ReportFirewallStatus(ctx context.Context, in *FirewallReportRequest, opts ...grpc.CallOption) (*FirewallReportResponse, error)
+	ReportFirewallStatus(ctx context.Context, in *FirewallStatusRequest, opts ...grpc.CallOption) (*FirewallStatusResponse, error)
 	// 5. إرسال تقرير بالتطبيقات المثبتة
-	ReportInstalledApps(ctx context.Context, in *ReportAppsRequest, opts ...grpc.CallOption) (*ReportAppsResponse, error)
+	ReportInstalledApps(ctx context.Context, in *InstalledAppsRequest, opts ...grpc.CallOption) (*InstalledAppsResponse, error)
 }
 
 type agentServiceClient struct {
@@ -69,8 +69,8 @@ func (c *agentServiceClient) SendHeartbeat(ctx context.Context, in *HeartbeatReq
 	return out, nil
 }
 
-func (c *agentServiceClient) ReportFirewallStatus(ctx context.Context, in *FirewallReportRequest, opts ...grpc.CallOption) (*FirewallReportResponse, error) {
-	out := new(FirewallReportResponse)
+func (c *agentServiceClient) ReportFirewallStatus(ctx context.Context, in *FirewallStatusRequest, opts ...grpc.CallOption) (*FirewallStatusResponse, error) {
+	out := new(FirewallStatusResponse)
 	err := c.cc.Invoke(ctx, "/proto.AgentService/ReportFirewallStatus", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -78,8 +78,8 @@ func (c *agentServiceClient) ReportFirewallStatus(ctx context.Context, in *Firew
 	return out, nil
 }
 
-func (c *agentServiceClient) ReportInstalledApps(ctx context.Context, in *ReportAppsRequest, opts ...grpc.CallOption) (*ReportAppsResponse, error) {
-	out := new(ReportAppsResponse)
+func (c *agentServiceClient) ReportInstalledApps(ctx context.Context, in *InstalledAppsRequest, opts ...grpc.CallOption) (*InstalledAppsResponse, error) {
+	out := new(InstalledAppsResponse)
 	err := c.cc.Invoke(ctx, "/proto.AgentService/ReportInstalledApps", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -98,9 +98,9 @@ type AgentServiceServer interface {
 	// 3. إرسال نبضة دورية لتحديث الحالة
 	SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	// 4. إرسال تقرير بقواعد جدار الحماية
-	ReportFirewallStatus(context.Context, *FirewallReportRequest) (*FirewallReportResponse, error)
+	ReportFirewallStatus(context.Context, *FirewallStatusRequest) (*FirewallStatusResponse, error)
 	// 5. إرسال تقرير بالتطبيقات المثبتة
-	ReportInstalledApps(context.Context, *ReportAppsRequest) (*ReportAppsResponse, error)
+	ReportInstalledApps(context.Context, *InstalledAppsRequest) (*InstalledAppsResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -117,10 +117,10 @@ func (UnimplementedAgentServiceServer) FindAgent(context.Context, *FindAgentRequ
 func (UnimplementedAgentServiceServer) SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendHeartbeat not implemented")
 }
-func (UnimplementedAgentServiceServer) ReportFirewallStatus(context.Context, *FirewallReportRequest) (*FirewallReportResponse, error) {
+func (UnimplementedAgentServiceServer) ReportFirewallStatus(context.Context, *FirewallStatusRequest) (*FirewallStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportFirewallStatus not implemented")
 }
-func (UnimplementedAgentServiceServer) ReportInstalledApps(context.Context, *ReportAppsRequest) (*ReportAppsResponse, error) {
+func (UnimplementedAgentServiceServer) ReportInstalledApps(context.Context, *InstalledAppsRequest) (*InstalledAppsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportInstalledApps not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
@@ -191,7 +191,7 @@ func _AgentService_SendHeartbeat_Handler(srv interface{}, ctx context.Context, d
 }
 
 func _AgentService_ReportFirewallStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FirewallReportRequest)
+	in := new(FirewallStatusRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -203,13 +203,13 @@ func _AgentService_ReportFirewallStatus_Handler(srv interface{}, ctx context.Con
 		FullMethod: "/proto.AgentService/ReportFirewallStatus",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgentServiceServer).ReportFirewallStatus(ctx, req.(*FirewallReportRequest))
+		return srv.(AgentServiceServer).ReportFirewallStatus(ctx, req.(*FirewallStatusRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _AgentService_ReportInstalledApps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReportAppsRequest)
+	in := new(InstalledAppsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func _AgentService_ReportInstalledApps_Handler(srv interface{}, ctx context.Cont
 		FullMethod: "/proto.AgentService/ReportInstalledApps",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgentServiceServer).ReportInstalledApps(ctx, req.(*ReportAppsRequest))
+		return srv.(AgentServiceServer).ReportInstalledApps(ctx, req.(*InstalledAppsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

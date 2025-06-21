@@ -1,28 +1,27 @@
-// agent_server/cmd/server/main.go
-
 package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
+	"time"
 
 	"agent_server/pkg/config"
 	"agent_server/pkg/database"
-	pb "agent_server/agent_server/proto"
+	pb "agent_server/agent_server/proto" // <- تأكد أن المسار ده صح بناءً على الـ go_package في الـ proto
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
+	"google.golang.org/grpc/reflection"
 )
 
 const (
 	port = ":50051"
-	// سيطلب السيرفر من العميل إرسال نبضة كل 5 دقائق (300 ثانية)
-	reportIntervalSeconds = 300
+	reportIntervalSeconds = 300 // سيطلب السيرفر من العميل إرسال نبضة كل 5 دقائق (300 ثانية)
 )
 
 // agentServer هو تطبيقنا للخدمة، ويحتوي الآن على اتصال بقاعدة البيانات
@@ -36,29 +35,10 @@ func newServer(db *gorm.DB) *agentServer {
 	return &agentServer{db: db}
 }
 
-// --- دوال التحويل بين Protobuf و GORM ---
-
-// toDBAgent يحول من protobuf Agent إلى GORM Agent
-func toDBAgent(pbAgent *pb.Agent) *database.Agent {
-	return &database.Agent{
-		ID:            pbAgent.GetAgentId(),
-		Hostname:      pbAgent.GetHostname(),
-		OSName:        pbAgent.GetOsName(),
-		OSVersion:     pbAgent.GetOsVersion(),
-		KernelVersion: pbAgent.GetKernelVersion(),
-		CPUCores:      pbAgent.GetCpuCores(),
-		MemoryGB:      pbAgent.GetMemoryGb(),
-		DiskSpaceGB:   pbAgent.GetDiskSpaceGb(),
-		Status:        pbAgent.GetStatus().String(), // تحويل الـ enum إلى نص
-		LastSeen:      pbAgent.GetLastSeen().AsTime(),
-		LastKnownIP:   pbAgent.GetLastKnownIp(),
-	}
-}
-
 // toPBAgent يحول من GORM Agent إلى protobuf Agent
 func toPBAgent(dbAgent *database.Agent) *pb.Agent {
 	return &pb.Agent{
-		AgentId:       dbAgent.ID,
+		AgentId:       dbAgent.AgentID,
 		Hostname:      dbAgent.Hostname,
 		OsName:        dbAgent.OSName,
 		OsVersion:     dbAgent.OSVersion,
@@ -74,39 +54,6 @@ func toPBAgent(dbAgent *database.Agent) *pb.Agent {
 
 // --- دوال RPC المنفذة ---
 
-func (s *agentServer) RegisterAgent(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	details := req.GetAgentDetails()
-	if details == nil || details.GetAgentId() == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "Agent details and ID are required")
-	}
-
-	p, _ := peer.FromContext(ctx)
-	clientIP := p.Addr.String()
-
-	log.Printf("Received registration request from Agent ID: %s at IP: %s", details.GetAgentId(), clientIP)
-
-	// تحديث تفاصيل العميل قبل الحفظ
-	details.LastKnownIp = clientIP
-	details.Status = pb.AgentStatus_ONLINE
-	details.LastSeen = timestamppb.Now()
-
-	dbAgent := toDBAgent(details)
-
-	// استخدام GORM لحفظ البيانات (Create or Update)
-	if err := s.db.Save(dbAgent).Error; err != nil {
-		log.Printf("Failed to save agent to database: %v", err)
-		return nil, status.Errorf(codes.Internal, "Could not save agent data")
-	}
-
-	log.Printf("Agent %s registered/updated successfully.", dbAgent.ID)
-
-	return &pb.RegisterResponse{
-		Success:              true,
-		Message:              "Agent registered successfully.",
-		ReportIntervalSeconds: reportIntervalSeconds,
-	}, nil
-}
-
 func (s *agentServer) FindAgent(ctx context.Context, req *pb.FindAgentRequest) (*pb.FindAgentResponse, error) {
 	agentID := req.GetAgentId()
 	if agentID == "" {
@@ -116,7 +63,7 @@ func (s *agentServer) FindAgent(ctx context.Context, req *pb.FindAgentRequest) (
 	log.Printf("Received find request for agent: ID=%s", agentID)
 
 	var dbAgent database.Agent
-	if err := s.db.First(&dbAgent, "id = ?", agentID).Error; err != nil {
+	if err := s.db.Where("agent_id = ?", agentID).First(&dbAgent).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return &pb.FindAgentResponse{Found: false}, nil
 		}
@@ -135,12 +82,12 @@ func (s *agentServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatReques
 
 	// تحديث الحقول المحددة فقط باستخدام GORM
 	updates := map[string]interface{}{
-		"status":        pb.AgentStatus_ONLINE.String(),
-		"last_seen":     timestamppb.Now().AsTime(),
+		"status":      pb.AgentStatus_ONLINE.String(),
+		"last_seen":   timestamppb.Now().AsTime(),
 		"last_known_ip": req.GetCurrentIp(),
 	}
 
-	result := s.db.Model(&database.Agent{}).Where("id = ?", agentID).Updates(updates)
+	result := s.db.Model(&database.Agent{}).Where("agent_id = ?", agentID).Updates(updates) // استخدام agent_id هنا
 	if result.Error != nil {
 		log.Printf("Failed to update heartbeat: %v", result.Error)
 		return nil, status.Errorf(codes.Internal, "Could not update agent status")
@@ -155,20 +102,111 @@ func (s *agentServer) SendHeartbeat(ctx context.Context, req *pb.HeartbeatReques
 	return &pb.HeartbeatResponse{Acknowledged: true}, nil
 }
 
-func (s *agentServer) ReportFirewallStatus(ctx context.Context, req *pb.FirewallReportRequest) (*pb.FirewallReportResponse, error) {
-	agentID := req.GetAgentId()
-	log.Printf("Received firewall report from agent: %s. Contains %d rules.", agentID, len(req.GetRules()))
-	// ملاحظة: في تطبيق حقيقي، ستقوم بإنشاء نموذج GORM لـ FirewallRule
-	// وتحفظ هذه البيانات في جدول منفصل مرتبط بالـ Agent.
-	return &pb.FirewallReportResponse{Received: true}, nil
+func (s *agentServer) ReportFirewallStatus(ctx context.Context, req *pb.FirewallStatusRequest) (*pb.FirewallStatusResponse, error) {
+	log.Printf("Received firewall status report from agent %s: %d rules", req.AgentId, len(req.Rules))
+
+	var agent database.Agent
+	if err := s.db.Where("agent_id = ?", req.AgentId).First(&agent).Error; err != nil { // استخدام agent_id هنا
+		log.Printf("Agent %s not found for firewall report: %v", req.AgentId, err)
+		return nil, status.Errorf(codes.NotFound, "Agent not found")
+	}
+
+	for _, ruleProto := range req.Rules {
+		newRule := database.FirewallRule{
+			AgentID:   agent.ID, // هنا هتستخدم ID بتاع الـ DB
+			Name:      ruleProto.Name,
+			Port:      ruleProto.Port,
+			Protocol:  ruleProto.Protocol,
+			Action:    ruleProto.Action.String(),
+			Direction: ruleProto.Direction.String(),
+			Enabled:   ruleProto.Enabled,
+		}
+		if err := s.db.Create(&newRule).Error; err != nil {
+			log.Printf("Failed to save firewall rule for agent %s: %v", req.AgentId, err)
+			return nil, status.Errorf(codes.Internal, "Could not save firewall rule")
+		}
+	}
+
+	return &pb.FirewallStatusResponse{Success: true, Message: "Firewall status received and stored"}, nil
 }
 
-func (s *agentServer) ReportInstalledApps(ctx context.Context, req *pb.ReportAppsRequest) (*pb.ReportAppsResponse, error) {
-	agentID := req.GetAgentId()
-	log.Printf("Received installed apps report from agent: %s. Contains %d apps.", agentID, len(req.GetApplications()))
-	// ملاحظة: في تطبيق حقيقي، ستقوم بإنشاء نموذج GORM لـ ApplicationInfo
-	// وتحفظ هذه البيانات.
-	return &pb.ReportAppsResponse{Received: true}, nil
+func (s *agentServer) ReportInstalledApps(ctx context.Context, req *pb.InstalledAppsRequest) (*pb.InstalledAppsResponse, error) {
+	log.Printf("Received installed apps report from agent %s: %d apps", req.AgentId, len(req.Apps))
+
+	var agent database.Agent
+	if err := s.db.Where("agent_id = ?", req.AgentId).First(&agent).Error; err != nil { // استخدام agent_id هنا
+		log.Printf("Agent %s not found for installed apps report: %v", req.AgentId, err)
+		return nil, status.Errorf(codes.NotFound, "Agent not found")
+	}
+
+	for _, appProto := range req.Apps {
+		newApp := database.InstalledApplication{
+			AgentID:     agent.ID, // هنا هتستخدم ID بتاع الـ DB
+			Name:        appProto.Name,
+			Version:     appProto.Version,
+			InstallDate: appProto.InstallDate.AsTime(),
+			Publisher:   appProto.Publisher,
+		}
+		if err := s.db.Create(&newApp).Error; err != nil {
+			log.Printf("Failed to save installed application for agent %s: %v", req.AgentId, err)
+			return nil, status.Errorf(codes.Internal, "Could not save installed application")
+		}
+	}
+
+	return &pb.InstalledAppsResponse{Success: true, Message: "Installed apps received and stored"}, nil
+}
+
+// -----------------------------------------------------------
+// دالة التسجيل RegisterAgent
+func (s *agentServer) RegisterAgent(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) { // <<< تم التعديل هنا
+	agentDetails := req.GetAgentDetails() // الوصول لـ agent_details من الـ Request
+	if agentDetails == nil || agentDetails.GetAgentId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Agent details and Agent ID are required for registration")
+	}
+
+	log.Printf("Received registration request for agent: %s", agentDetails.GetAgentId())
+
+	// التحقق مما إذا كان العميل موجودًا بالفعل
+	var existingAgent database.Agent
+	// استخدام agent_id للبحث في قاعدة البيانات
+	if err := s.db.Where("agent_id = ?", agentDetails.GetAgentId()).First(&existingAgent).Error; err == nil {
+		// العميل موجود، قم بتحديث حالته
+		log.Printf("Agent %s already exists. Updating status.", agentDetails.GetAgentId())
+		existingAgent.Status = pb.AgentStatus_ONLINE.String() // تحويل ENUM إلى نص
+		existingAgent.LastSeen = time.Now()
+		// existingAgent.LastKnownIP = getRequesterIP(ctx) // getRequesterIP is not defined, commenting out for now
+		if err := s.db.Save(&existingAgent).Error; err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to update agent: %v", err)
+		}
+		// <<< تم التعديل هنا ليتناسب مع RegisterResponse الجديد
+		return &pb.RegisterResponse{Success: true, Message: "Agent updated successfully", ReportIntervalSeconds: reportIntervalSeconds}, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// خطأ آخر في قاعدة البيانات
+		return nil, status.Errorf(codes.Internal, "database error: %v", err)
+	}
+
+	// إنشاء عميل جديد
+	newAgent := database.Agent{
+		AgentID:       agentDetails.GetAgentId(),
+		Hostname:      agentDetails.GetHostname(),
+		OSName:        agentDetails.GetOsName(),
+		OSVersion:     agentDetails.GetOsVersion(),
+		KernelVersion: agentDetails.GetKernelVersion(),
+		CPUCores:      agentDetails.GetCpuCores(),
+		MemoryGB:      agentDetails.GetMemoryGb(),
+		DiskSpaceGB:   agentDetails.GetDiskSpaceGb(),
+		Status:        pb.AgentStatus_ONLINE.String(), // تحويل ENUM إلى نص
+		LastSeen:      time.Now(),
+		// LastKnownIP:   getRequesterIP(ctx), // getRequesterIP is not defined, commenting out for now
+	}
+
+	if err := s.db.Create(&newAgent).Error; err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create agent: %v", err)
+	}
+
+	log.Printf("Successfully registered new agent: %s with DB ID: %d", newAgent.AgentID, newAgent.ID)
+	// <<< تم التعديل هنا ليتناسب مع RegisterResponse الجديد
+	return &pb.RegisterResponse{Success: true, Message: "Agent registered successfully", ReportIntervalSeconds: reportIntervalSeconds}, nil
 }
 
 func main() {
@@ -193,7 +231,7 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterAgentServiceServer(grpcServer, newServer(db)) // تمرير اتصال DB
-
+	reflection.Register(grpcServer)                          // <-- 2. تسجيل خدمة الانعكاس
 	log.Printf("gRPC server listening on %s", port)
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)

@@ -1,0 +1,17 @@
+{
+    "agent_id": "agent-grpcurl-007",
+    "apps": [
+      {
+        "name": "Google Chrome",
+        "version": "125.0.6422.113",
+        "publisher": "Google LLC",
+        "install_date": "2024-05-15T10:00:00Z"
+      },
+      {
+        "name": "Visual Studio Code",
+        "version": "1.90.0",
+        "publisher": "Microsoft Corporation",
+        "install_date": "2024-04-20T14:30:00Z"
+      }
+    ]
+  }

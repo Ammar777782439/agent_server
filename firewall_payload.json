@@ -1,0 +1,21 @@
+{
+    "agent_id": "agent-grpcurl-007",
+    "rules": [
+      {
+        "name": "Allow HTTPS",
+        "port": "443",
+        "protocol": "TCP",
+        "action": "ACTION_ALLOW",
+        "direction": "DIRECTION_IN",
+        "enabled": true
+      },
+      {
+        "name": "Block FTP",
+        "port": "21",
+        "protocol": "TCP",
+        "action": "ACTION_DENY",
+        "direction": "DIRECTION_OUT",
+        "enabled": true
+      }
+    ]
+  }
