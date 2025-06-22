@@ -4,12 +4,12 @@ package service
 
 import (
 	"agent_server/internal/model"
-	pb "agent_server/agent_server/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
+	agentpb "agent_server/gen/agent/v1"
+	commonpb "agent_server/gen/common/v1"
 )
 
-// mapProtoToModelAgent converts a Protobuf Agent to a GORM model Agent.
-func mapProtoToModelAgent(p *pb.Agent) *model.Agent {
+// mapProtoToModelAgent converts a Protobuf AgentInfo to a GORM model Agent.
+func mapProtoToModelAgent(p *agentpb.AgentInfo) *model.Agent {
 	if p == nil {
 		return nil
 	}
@@ -22,16 +22,16 @@ func mapProtoToModelAgent(p *pb.Agent) *model.Agent {
 		CPUCores:      p.GetCpuCores(),
 		MemoryGB:      p.GetMemoryGb(),
 		DiskSpaceGB:   p.GetDiskSpaceGb(),
-		LastKnownIP:   p.GetLastKnownIp(),
+		LastKnownIP:   "", // AgentInfo لا يحتوي LastKnownIP مباشرة
 	}
 }
 
-// mapModelToProtoAgent converts a GORM model Agent to a Protobuf Agent.
-func mapModelToProtoAgent(m *model.Agent) *pb.Agent {
+// mapModelToProtoAgent converts a GORM model Agent to a Protobuf AgentInfo.
+func mapModelToProtoAgent(m *model.Agent) *agentpb.AgentInfo {
 	if m == nil {
 		return nil
 	}
-	return &pb.Agent{
+	return &agentpb.AgentInfo{
 		AgentId:       m.AgentID,
 		Hostname:      m.Hostname,
 		OsName:        m.OSName,
@@ -40,14 +40,12 @@ func mapModelToProtoAgent(m *model.Agent) *pb.Agent {
 		CpuCores:      m.CPUCores,
 		MemoryGb:      m.MemoryGB,
 		DiskSpaceGb:   m.DiskSpaceGB,
-		Status:        pb.AgentStatus(pb.AgentStatus_value[m.Status]),
-		LastSeen:      timestamppb.New(m.LastSeen),
-		LastKnownIp:   m.LastKnownIP,
+		// لا يوجد LastKnownIp أو Status أو LastSeen في AgentInfo حسب البروتو الحالي
 	}
 }
 
 // mapProtoToModelFirewallRules converts a slice of Protobuf FirewallRules to GORM models.
-func mapProtoToModelFirewallRules(protoRules []*pb.FirewallRule) []model.FirewallRule {
+func mapProtoToModelFirewallRules(protoRules []*commonpb.FirewallRule) []model.FirewallRule {
 	modelRules := make([]model.FirewallRule, 0, len(protoRules))
 	for _, p := range protoRules {
 		modelRules = append(modelRules, model.FirewallRule{
@@ -63,7 +61,7 @@ func mapProtoToModelFirewallRules(protoRules []*pb.FirewallRule) []model.Firewal
 }
 
 // mapProtoToModelInstalledApps converts a slice of Protobuf Applications to GORM models.
-func mapProtoToModelInstalledApps(protoApps []*pb.ApplicationInfo) []model.InstalledApplication {
+func mapProtoToModelInstalledApps(protoApps []*commonpb.ApplicationInfo) []model.InstalledApplication {
 	modelApps := make([]model.InstalledApplication, 0, len(protoApps))
 	for _, p := range protoApps {
 		modelApps = append(modelApps, model.InstalledApplication{

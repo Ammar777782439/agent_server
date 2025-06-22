@@ -5,11 +5,11 @@ package main
 import (
 	"log"
 	"net"
-	
+	"os"
 
-	pb "agent_server/agent_server/proto"
+	pb "agent_server/gen/service/v1"
+
 	"agent_server/internal/config"
-
 	"agent_server/internal/repository"
 	"agent_server/internal/service"
 	"agent_server/internal/usecase"
@@ -56,7 +56,17 @@ func main() {
 		log.Fatalf("Failed to listen on port %s: %v", port, err)
 	}
 
-	grpcServer := grpc.NewServer()
+	// Require auth token from env
+	authToken := os.Getenv("AGENT_SERVER_AUTH_TOKEN")
+	var grpcServer *grpc.Server
+	if authToken == "" {
+		log.Println("Warning: AGENT_SERVER_AUTH_TOKEN is not set. Running WITHOUT authentication!")
+		grpcServer = grpc.NewServer()
+	} else {
+		grpcServer = grpc.NewServer(
+			grpc.UnaryInterceptor(service.AuthInterceptor()),
+		)
+	}
 	pb.RegisterAgentServiceServer(grpcServer, agentServer)
 	
 	reflection.Register(grpcServer)
