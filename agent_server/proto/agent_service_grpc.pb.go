@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v6.31.1
-// source: proto/agent_service.proto
+// source: api/proto/agent_service.proto
 
 package proto
 
@@ -32,6 +32,12 @@ type AgentServiceClient interface {
 	ReportFirewallStatus(ctx context.Context, in *FirewallStatusRequest, opts ...grpc.CallOption) (*FirewallStatusResponse, error)
 	// 5. إرسال تقرير بالتطبيقات المثبتة
 	ReportInstalledApps(ctx context.Context, in *InstalledAppsRequest, opts ...grpc.CallOption) (*InstalledAppsResponse, error)
+	// --------------------------- SERVICES (متعلق السيرفر يرسل للوكيل) ---------------------------
+	// لم يتم التنفيذ بعد
+	// 6. تكوين جدار الحماية: السيرفر يرسل أمر للوكيل لتعديل إعدادات جدار الحماية
+	ConfigureFirewall(ctx context.Context, in *FirewallConfigurationRequest, opts ...grpc.CallOption) (*FirewallConfigurationResponse, error)
+	// نفتح  قناة اتصال ثنائية الاتجاه
+	TaskChannel(ctx context.Context, opts ...grpc.CallOption) (AgentService_TaskChannelClient, error)
 }
 
 type agentServiceClient struct {
@@ -87,6 +93,46 @@ func (c *agentServiceClient) ReportInstalledApps(ctx context.Context, in *Instal
 	return out, nil
 }
 
+func (c *agentServiceClient) ConfigureFirewall(ctx context.Context, in *FirewallConfigurationRequest, opts ...grpc.CallOption) (*FirewallConfigurationResponse, error) {
+	out := new(FirewallConfigurationResponse)
+	err := c.cc.Invoke(ctx, "/proto.AgentService/ConfigureFirewall", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) TaskChannel(ctx context.Context, opts ...grpc.CallOption) (AgentService_TaskChannelClient, error) {
+	stream, err := c.cc.NewStream(ctx, &AgentService_ServiceDesc.Streams[0], "/proto.AgentService/TaskChannel", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &agentServiceTaskChannelClient{stream}
+	return x, nil
+}
+
+type AgentService_TaskChannelClient interface {
+	Send(*TaskResult) error
+	Recv() (*TaskRequest, error)
+	grpc.ClientStream
+}
+
+type agentServiceTaskChannelClient struct {
+	grpc.ClientStream
+}
+
+func (x *agentServiceTaskChannelClient) Send(m *TaskResult) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *agentServiceTaskChannelClient) Recv() (*TaskRequest, error) {
+	m := new(TaskRequest)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility
@@ -101,6 +147,12 @@ type AgentServiceServer interface {
 	ReportFirewallStatus(context.Context, *FirewallStatusRequest) (*FirewallStatusResponse, error)
 	// 5. إرسال تقرير بالتطبيقات المثبتة
 	ReportInstalledApps(context.Context, *InstalledAppsRequest) (*InstalledAppsResponse, error)
+	// --------------------------- SERVICES (متعلق السيرفر يرسل للوكيل) ---------------------------
+	// لم يتم التنفيذ بعد
+	// 6. تكوين جدار الحماية: السيرفر يرسل أمر للوكيل لتعديل إعدادات جدار الحماية
+	ConfigureFirewall(context.Context, *FirewallConfigurationRequest) (*FirewallConfigurationResponse, error)
+	// نفتح  قناة اتصال ثنائية الاتجاه
+	TaskChannel(AgentService_TaskChannelServer) error
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -122,6 +174,12 @@ func (UnimplementedAgentServiceServer) ReportFirewallStatus(context.Context, *Fi
 }
 func (UnimplementedAgentServiceServer) ReportInstalledApps(context.Context, *InstalledAppsRequest) (*InstalledAppsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportInstalledApps not implemented")
+}
+func (UnimplementedAgentServiceServer) ConfigureFirewall(context.Context, *FirewallConfigurationRequest) (*FirewallConfigurationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfigureFirewall not implemented")
+}
+func (UnimplementedAgentServiceServer) TaskChannel(AgentService_TaskChannelServer) error {
+	return status.Errorf(codes.Unimplemented, "method TaskChannel not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 
@@ -226,6 +284,50 @@ func _AgentService_ReportInstalledApps_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ConfigureFirewall_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FirewallConfigurationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ConfigureFirewall(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.AgentService/ConfigureFirewall",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ConfigureFirewall(ctx, req.(*FirewallConfigurationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_TaskChannel_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AgentServiceServer).TaskChannel(&agentServiceTaskChannelServer{stream})
+}
+
+type AgentService_TaskChannelServer interface {
+	Send(*TaskRequest) error
+	Recv() (*TaskResult, error)
+	grpc.ServerStream
+}
+
+type agentServiceTaskChannelServer struct {
+	grpc.ServerStream
+}
+
+func (x *agentServiceTaskChannelServer) Send(m *TaskRequest) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *agentServiceTaskChannelServer) Recv() (*TaskResult, error) {
+	m := new(TaskResult)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -253,7 +355,18 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "ReportInstalledApps",
 			Handler:    _AgentService_ReportInstalledApps_Handler,
 		},
+		{
+			MethodName: "ConfigureFirewall",
+			Handler:    _AgentService_ConfigureFirewall_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/agent_service.proto",
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "TaskChannel",
+			Handler:       _AgentService_TaskChannel_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "api/proto/agent_service.proto",
 }

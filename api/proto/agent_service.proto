@@ -51,11 +51,27 @@ service AgentService {
     // 6. تكوين جدار الحماية: السيرفر يرسل أمر للوكيل لتعديل إعدادات جدار الحماية
     rpc ConfigureFirewall(FirewallConfigurationRequest) returns (FirewallConfigurationResponse);
 
+    // نفتح  قناة اتصال ثنائية الاتجاه
+   rpc TaskChannel(stream TaskResult) returns (stream TaskRequest);
+
 }
 
 
 // --------------------------- MESSAGES (الرسائل) ---------------------------
+// رسالة من السيرفر إلى العميل
+message TaskRequest {
+  string task_id = 1;      // معرف فريد لكل مهمة
+  string command_name = 2; // اسم الأمر المطلوب (e.g., "get_processes", "get_users")
+  map<string, string> params = 3; // أي متغيرات للأمر (e.g., {"path": "/etc"})
+}
 
+// رسالة من العميل إلى السيرفر
+message TaskResult {
+  string task_id = 1;      // نفس معرف المهمة لتسهيل الربط
+  bool success = 2;        // هل نجحت المهمة؟
+  string payload = 3;      // البيانات الفعلية (e.g., JSON string of processes)
+  string error_message = 4; // رسالة الخطأ في حال الفشل
+}
 // --- رسائل التسجيل والبحث والنبضة ---
 
 // رسالة موحدة تمثل العميل بكل تفاصيله

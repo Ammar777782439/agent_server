@@ -46,3 +46,11 @@ type InstalledApplication struct {
 	InstallDate time.Time
 	Publisher   string    `gorm:"size:255"`
 }
+// Query يمثل استعلامًا أو مهمة يمكن إرسالها إلى العملاء
+type Query struct {
+	gorm.Model
+	Name        string `gorm:"size:255;not null"`       // اسم وصفي للاستعلام، مثل "جمع معلومات النظام"
+	Description string `gorm:"size:1024"`               // شرح للاستعلام
+	CommandName string `gorm:"size:255;not null;index"` // اسم الأمر الذي يفهمه العميل، مثل "get_system_info"
+	Parameters  string `gorm:"type:text"`               // متغيرات إضافية على شكل JSON
+}

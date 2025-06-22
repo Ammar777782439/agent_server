@@ -3,10 +3,13 @@
 package service
 
 import (
-	"agent_server/internal/usecase"
 	pb "agent_server/agent_server/proto"
+	"agent_server/internal/model"
+	"agent_server/internal/usecase"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 
 	"google.golang.org/grpc/codes"
@@ -22,16 +25,18 @@ const (
 type AgentServer struct {
 	pb.UnimplementedAgentServiceServer
 	agentLogic usecase.AgentUseCase
+	db         *gorm.DB
 }
 
 // NewAgentServer creates a new AgentServer with the injected business logic layer.
-func NewAgentServer(logic usecase.AgentUseCase) *AgentServer {
-	return &AgentServer{agentLogic: logic}
-}
-
+func NewAgentServer(logic usecase.AgentUseCase, db *gorm.DB) *AgentServer {
+	
+		return &AgentServer{agentLogic: logic, db: db}
+	}
+	
 // RegisterAgent is now a thin layer that validates, maps, and calls the logic layer.
 func (s *AgentServer) RegisterAgent(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	
+
 	agentDetailsProto := req.GetAgentDetails()
 	if agentDetailsProto == nil || agentDetailsProto.GetAgentId() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "Agent details and Agent ID are required")
@@ -112,4 +117,46 @@ func (s *AgentServer) FindAgent(ctx context.Context, req *pb.FindAgentRequest) (
 	agentProto := mapModelToProtoAgent(agentModel)
 
 	return &pb.FindAgentResponse{Found: true, Agent: agentProto}, nil
+}
+
+// TaskChannel هي الدالة التي تنفذ الواجهة الجديدة لـ gRPC
+// وتتعامل مع قناة الاتصال المفتوحة مع العميل.
+func (s *AgentServer) TaskChannel(stream pb.AgentService_TaskChannelServer) error {
+	log.Println("✅ Agent connected to the Task Channel!")
+
+	// 🔴🔴🔴 المنطق الجديد: قراءة مهمة من قاعدة البيانات وإرسالها مرة واحدة 🔴🔴🔴
+	var query model.Query
+	// ابحث عن أول استعلام متاح في قاعدة البيانات
+	if err := s.db.First(&query).Error; err != nil {
+		log.Printf("Could not find any query in the database: %v", err)
+		// يمكنك إغلاق الاتصال أو الانتظار
+	} else {
+		// تم العثور على استعلام، قم ببناء المهمة
+		task := &pb.TaskRequest{
+			TaskId:      fmt.Sprintf("task-%d", query.ID), // استخدام معرف الاستعلام كمعرف للمهمة
+			CommandName: query.CommandName,
+			// يمكنك إضافة المتغيرات هنا إذا لزم الأمر
+		}
+		log.Printf("✔️ Found query [ID: %d]. Sending task '%s' to agent.", query.ID, task.CommandName)
+		if err := stream.Send(task); err != nil {
+			log.Printf("Error sending initial task to agent: %v", err)
+		}
+	}
+	// 🔴🔴🔴 نهاية المنطق الجديد 🔴🔴🔴
+
+	// حلقة للاستماع للنتائج القادمة من العميل
+	for {
+		result, err := stream.Recv()
+		if err == io.EOF {
+			log.Println("Client closed the stream.")
+			return nil
+		}
+		if err != nil {
+			log.Printf("Error receiving result from agent: %v", err)
+			return err
+		}
+
+		// TODO: في المستقبل، سنقوم بتخزين هذه النتيجة في قاعدة البيانات
+		log.Printf("Received result from agent for Task [ID: %s], Success: %v", result.TaskId, result.Success)
+	}
 }

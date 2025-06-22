@@ -20,7 +20,7 @@ func ConnectDB(cfg *config.DBConfig) (*gorm.DB, error) {
 	}
 
 	// AutoMigrate سيقوم بإنشاء الجداول إذا لم تكن موجودة
-	err = db.AutoMigrate(&model.Agent{}, &model.FirewallRule{}, &model.InstalledApplication{})
+	err = db.AutoMigrate(&model.Agent{}, &model.FirewallRule{}, &model.InstalledApplication{}, &model.Query{})
 	if err != nil {
 		// إذا فشل، حاول إغلاق الاتصال قبل إرجاع الخطأ
 		sqlDB, _ := db.DB()
