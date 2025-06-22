@@ -1,0 +1,16 @@
+// service/v1/service.proto
+syntax = "proto3";
+
+package agent_server.service.v1;
+
+option go_package = "agent_server/gen/service/v1;servicev1";
+// هذا الملف هو نقطة التجمع النهائية، بسيط ونظيف ويحتوي فقط على تعريف الخدمة.
+import "agent/v1/messages.proto";
+import "server/v1/commands.proto";
+
+// AgentService هي الخدمة الرئيسية لإدارة الوكلاء.
+service AgentService {
+  // CommandStream هي قناة اتصال ثنائية الاتجاه ومستمرة
+  // لجميع أنواع التواصل بين الوكيل والسيرفر.
+  rpc CommandStream(stream agent.v1.AgentToServer) returns (stream server.v1.ServerToAgent) {}
+}

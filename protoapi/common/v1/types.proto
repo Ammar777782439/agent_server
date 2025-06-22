@@ -1,0 +1,67 @@
+// common/v1/types.proto
+syntax = "proto3";
+
+package agent_server.common.v1;
+
+option go_package = "agent_server/gen/common/v1;commonv1";
+
+import "google/protobuf/timestamp.proto";
+
+// // هذا الملف يحتوي على كل الرسائل والتعدادات (Enums) التي يمكن إعادة استخدامها أو التي تمثل كائنات بيانات أساسية.
+// يمثل قاعدة جدار حماية واحدة.
+message FirewallRule {
+  string name = 1;
+  string port = 2;
+  string protocol = 3;
+  FirewallAction action = 4;
+  FirewallDirection direction = 5;
+  bool enabled = 6;
+}
+
+// يمثل تطبيقًا واحدًا مثبتًا.
+message ApplicationInfo {
+  string name = 1;
+  string version = 2;
+  string publisher = 3;
+  google.protobuf.Timestamp install_date = 4;
+}
+
+// --- رسائل فحص النظام ---
+
+// أنواع الفحص المدعومة.
+enum ScanType {
+  SCAN_TYPE_UNSPECIFIED = 0; // أفضل ممارسة: القيمة صفر للحالة غير المحددة
+  SCAN_TYPE_PORT = 1;
+  SCAN_TYPE_VULNERABILITY = 2;
+  SCAN_TYPE_INTEGRITY = 3;
+  SCAN_TYPE_ANTIVIRUS = 4;
+}
+
+// النتيجة الواحدة التي يتم العثور عليها أثناء الفحص.
+message ScanFinding {
+  string description = 1;
+  Severity severity = 2;
+  string details = 3; // تفاصيل إضافية عن النتيجة
+}
+
+// --- تعدادات مساعدة ---
+
+enum FirewallAction {
+  FIREWALL_ACTION_UNSPECIFIED = 0;
+  FIREWALL_ACTION_ALLOW = 1;
+  FIREWALL_ACTION_DENY = 2;
+}
+
+enum FirewallDirection {
+  FIREWALL_DIRECTION_UNSPECIFIED = 0;
+  FIREWALL_DIRECTION_IN = 1;
+  FIREWALL_DIRECTION_OUT = 2;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_LOW = 1;
+  SEVERITY_MEDIUM = 2;
+  SEVERITY_HIGH = 3;
+  SEVERITY_CRITICAL = 4;
+}

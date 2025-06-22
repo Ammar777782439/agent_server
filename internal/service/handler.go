@@ -31,7 +31,6 @@ func NewAgentServer(logic usecase.AgentUseCase) *AgentServer {
 
 // RegisterAgent is now a thin layer that validates, maps, and calls the logic layer.
 func (s *AgentServer) RegisterAgent(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	
 	agentDetailsProto := req.GetAgentDetails()
 	if agentDetailsProto == nil || agentDetailsProto.GetAgentId() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "Agent details and Agent ID are required")

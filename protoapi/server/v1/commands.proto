@@ -1,0 +1,52 @@
+// server/v1/commands.proto
+syntax = "proto3";
+
+package agent_server.server.v1;
+
+option go_package = "agent_server/gen/server/v1;serverv1";
+
+import "common/v1/types.proto";
+
+// هذا الملف يصف كل الرسائل (الأوامر) التي يرسلها السيرفر إلى الوكيل.
+// الرسالة الموحدة التي يرسلها السيرفر إلى الوكيل.
+message ServerToAgent {
+  string command_id = 1; // معرف فريد لكل أمر
+
+  oneof command {
+    // رسالة تأكيد بعد نجاح تسجيل الوكيل
+    RegistrationAck registration_ack = 2;
+    // أمر لتعديل إعدادات جدار الحماية
+    ConfigureFirewallCommand configure_firewall = 3;
+    // أمر بطلب إرسال تقرير معين
+    RequestReportCommand request_report = 4;
+    // أمر ببدء عملية فحص للنظام
+    StartScanCommand start_scan = 5;
+  }
+}
+
+// رسالة تأكيد التسجيل.
+message RegistrationAck {
+  string message = 1;
+  int32 heartbeat_interval_seconds = 2;
+}
+
+// أمر تعديل جدار الحماية.
+message ConfigureFirewallCommand {
+  // ... تعريف تفاصيل الأمر (إضافة، حذف، تعديل قاعدة)
+}
+
+// أمر عام لطلب تقرير.
+message RequestReportCommand {
+  enum ReportType {
+    REPORT_TYPE_UNSPECIFIED = 0;
+    REPORT_TYPE_FIREWALL_RULES = 1;
+    REPORT_TYPE_INSTALLED_APPS = 2;
+  }
+  ReportType report_type = 1;
+}
+
+// أمر لبدء فحص النظام.
+message StartScanCommand {
+  common.v1.ScanType scan_type = 1;
+  repeated string targets = 2; // اختياري: مثل IPs أو مسارات ملفات معينة
+}

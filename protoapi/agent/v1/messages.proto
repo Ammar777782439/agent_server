@@ -1,0 +1,66 @@
+// agent/v1/messages.proto
+syntax = "proto3";
+
+package agent_server.agent.v1;
+// هذا الملف يصف كل الرسائل التي يرسلها الوكيل إلى السيرفر.
+
+option go_package = "agent_server/gen/agent/v1;agentv1";
+
+import "google/protobuf/timestamp.proto";
+import "common/v1/types.proto";
+
+// الرسالة الموحدة التي يرسلها الوكيل إلى السيرفر.
+message AgentToServer {
+  // معرف فريد لكل رسالة لتتبعها إذا لزم الأمر
+  string message_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+
+  oneof payload {
+    // معلومات التعريف الأساسية، تُرسل كأول رسالة
+    AgentInfo agent_info = 3;
+    // نبضة قلب دورية
+    Heartbeat heartbeat = 4;
+    // تقرير عن قواعد جدار الحماية (كرد على طلب من السيرفر)
+    FirewallRulesReport firewall_rules_report = 5;
+    // تقرير عن التطبيقات المثبتة
+    InstalledAppsReport installed_apps_report = 6;
+    // تقرير بنتائج الفحص (كرد على أمر فحص من السيرفر)
+    ScanReport scan_report = 7;
+  }
+}
+
+// معلومات الوكيل الأساسية.
+message AgentInfo {
+  string agent_id = 1;
+  string hostname = 2;
+  string os_name = 3;
+  string os_version = 4;
+  string kernel_version = 5;
+  int32 cpu_cores = 6;
+  double memory_gb = 7;
+  double disk_space_gb = 8;
+}
+
+// رسالة نبضة القلب، بسيطة لإثبات الاتصال.
+message Heartbeat {
+  // يمكن أن تكون فارغة، فوجودها يكفي
+}
+
+// تقرير يحتوي على قائمة قواعد جدار الحماية.
+message FirewallRulesReport {
+  repeated common.v1.FirewallRule rules = 1;
+}
+
+// تقرير يحتوي على قائمة التطبيقات المثبتة.
+message InstalledAppsReport {
+  repeated common.v1.ApplicationInfo apps = 1;
+}
+
+// تقرير يحتوي على نتائج الفحص الذي تم إجراؤه.
+message ScanReport {
+  // ربط الرد بالطلب الأصلي من السيرفر
+  string original_request_id = 1;
+  bool success = 2;
+  string message = 3; // رسالة عن حالة الفحص (e.g., "Completed in 5 minutes")
+  repeated common.v1.ScanFinding findings = 4; // قائمة بالنتائج
+}
