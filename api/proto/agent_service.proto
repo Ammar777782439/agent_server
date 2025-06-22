@@ -15,7 +15,7 @@ enum AgentStatus {
     OFFLINE = 2;
     DECOMMISSIONED = 3; 
 }
-
+// Outbound traffic و Inbound traffic
 enum FirewallDirection {
     DIRECTION_UNKNOWN = 0;
     DIRECTION_IN = 1;
@@ -41,9 +41,16 @@ service AgentService {
 
     // 4. إرسال تقرير بقواعد جدار الحماية
     rpc ReportFirewallStatus(FirewallStatusRequest) returns (FirewallStatusResponse);
-
+   
     // 5. إرسال تقرير بالتطبيقات المثبتة
-    rpc ReportInstalledApps(InstalledAppsRequest) returns (InstalledAppsResponse); 
+    rpc ReportInstalledApps(InstalledAppsRequest) returns (InstalledAppsResponse);
+
+
+   // --------------------------- SERVICES (متعلق السيرفر يرسل للوكيل) ---------------------------
+    // لم يتم التنفيذ بعد
+    // 6. تكوين جدار الحماية: السيرفر يرسل أمر للوكيل لتعديل إعدادات جدار الحماية
+    rpc ConfigureFirewall(FirewallConfigurationRequest) returns (FirewallConfigurationResponse);
+
 }
 
 
@@ -139,4 +146,56 @@ message InstalledAppsRequest {
 message InstalledAppsResponse {
     bool success = 1;
     string message = 2;
+}
+
+
+// <<<<<<<<<<<<<< رسائل إدارة وتكوين جدار الحماية  >>>>>>>>>>>>>>
+
+// رسالة لتحديد تفاصيل إضافة قاعدة جديدة لجدار الحماية
+message AddFirewallRuleRequest {
+    FirewallRule rule = 1; // القاعدة الكاملة المراد إضافتها
+}
+
+
+
+
+message UpdateFirewallRuleRequest {
+    string target_rule_name = 1; // اسم القاعدة المراد تعديلها (مفتاح البحث)
+    FirewallRule new_rule_details = 2; // التفاصيل الجديدة للقاعدة (مع اسمها الجديد إن وجد)
+}
+
+// رسالة لتحديد تفاصيل حذف قاعدة جدار حماية
+message DeleteFirewallRuleRequest {
+    string rule_name = 1; // اسم القاعدة  
+}
+
+// رسالة لطلب تفعيل جدار الحماية بالكامل
+message EnableFirewallRequest {
+
+}
+
+// رسالة لطلب تعطيل جدار الحماية بالكامل
+message DisableFirewallRequest {
+    
+}
+
+// الرسالة الرئيسية لطلب تكوين جدار الحماية (السيرفر -> الوكيل)
+
+// استخدمنا ال oneof لنظمن رساله واحده ونخفف العبئ
+message FirewallConfigurationRequest {
+    string agent_id = 1;
+
+    oneof operation_type { // يمكن أن يكون أحد هذه الحقول فقط موجودًا
+        AddFirewallRuleRequest add_rule = 2;
+        UpdateFirewallRuleRequest update_rule = 3;
+        DeleteFirewallRuleRequest delete_rule = 4;
+        EnableFirewallRequest enable_firewall = 5;
+        DisableFirewallRequest disable_firewall = 6;
+    }
+}
+
+// رسالة الاستجابة لطلب تكوين جدار الحماية (الوكيل -> السيرفر)
+message FirewallConfigurationResponse {
+    bool success = 1; // هل تمت العملية بنجاح على الوكيل؟
+    string message = 2; // رسالة تفصيلية عن النتيجة أو أي خطأ حدث على الوكيل
 }

@@ -75,3 +75,4 @@ func mapProtoToModelInstalledApps(protoApps []*pb.ApplicationInfo) []model.Insta
 	}
 	return modelApps
 }
+

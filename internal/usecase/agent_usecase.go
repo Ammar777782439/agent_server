@@ -6,6 +6,7 @@ import (
 	"agent_server/internal/model"
 	"agent_server/internal/repository"
 	"errors"
+	"log"
 	"time"
 
 	"gorm.io/gorm"
@@ -18,6 +19,7 @@ type AgentUseCase interface {
 	ProcessHeartbeat(agentID, ip string) (int64, error)
 	StoreFirewallRules(agentID string, rules []model.FirewallRule) error
 	StoreInstalledApps(agentID string, apps []model.InstalledApplication) error
+	MarkOfflineAgents() error
 }
 
 type agentUseCase struct {
@@ -45,7 +47,7 @@ func (uc *agentUseCase) RegisterAgent(agent *model.Agent) (*model.Agent, error) 
 		existingAgent.DiskSpaceGB = agent.DiskSpaceGB
 		existingAgent.Status = "ONLINE"
 		existingAgent.LastSeen = time.Now()
-		
+
 		err = uc.repo.UpdateAgent(existingAgent)
 		return existingAgent, err
 	}
@@ -102,4 +104,41 @@ func (uc *agentUseCase) StoreInstalledApps(agentID string, apps []model.Installe
 	}
 
 	return uc.repo.CreateInstalledApps(apps)
+}
+func (uc *agentUseCase) MarkOfflineAgents() error {
+    const reportIntervalSeconds = 300 // 5 minutes
+
+    // 1. تستدعي  من طبقه المخزون  كل الوكلا الذين حالتهم "ONLINE"
+    onlineAgents, err := uc.repo.FindAgentsByStatus("ONLINE")
+    if err != nil {
+        return err
+    }
+
+    if len(onlineAgents) == 0 {
+        // لا يوجد عملاء أونلاين، لا داعي لإكمال العمل
+        return nil
+    }
+
+    log.Printf("Found %d online agents to check.", len(onlineAgents))
+
+    // 2. قم بالمرور على كل عميل وتطبيق منطق الوصفة
+    for _, agent := range onlineAgents {
+        interval := time.Duration(reportIntervalSeconds) * time.Second
+        gracePeriod := interval / 10 // 10% grace period
+        if gracePeriod < (10 * time.Second) {
+            gracePeriod = 10 * time.Second // Minimum 10 seconds
+        }
+
+        if time.Since(agent.LastSeen) > (interval + gracePeriod) {
+            log.Printf("Agent %s is now considered OFFLINE. Last seen: %v", agent.AgentID, agent.LastSeen)
+            agent.Status = "OFFLINE"
+
+            // 3. اطلب من طبقه  المخزن تحديث حالة العميل
+            if err := uc.repo.UpdateAgent(&agent); err != nil {
+                log.Printf("Failed to update agent %s to OFFLINE: %v", agent.AgentID, err)
+                // ملاحظة: نحن لا نوقف العملية بأكملها لو فشل تحديث عميل واحد
+            }
+        }
+    }
+    return nil
 }

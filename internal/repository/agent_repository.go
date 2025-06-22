@@ -16,6 +16,7 @@ import (
 	UpdateHeartbeat(agentID, ip string) (int64, error)
 	CreateFirewallRules(rules []model.FirewallRule) error
 	CreateInstalledApps(apps []model.InstalledApplication) error
+	FindAgentsByStatus(status string) ([]model.Agent, error)
 }
 
 type gormRepository struct {
@@ -59,4 +60,20 @@ func (r *gormRepository) CreateFirewallRules(rules []model.FirewallRule) error {
 
 func (r *gormRepository) CreateInstalledApps(apps []model.InstalledApplication) error {
 	return r.db.Create(&apps).Error
+}
+func (r *gormRepository) FindAgentsByStatus(status string) ([]model.Agent, error) {
+	//  نجهز سلة فارغة لوضع الوكلا فيها
+	var agents []model.Agent
+
+	// 2. نطلب من GORM أن يبحث في جدول العملاء
+	//    عن كل من تطابق حالته الحالة المطلوبة ("ONLINE" مثلاً)
+	//    ويضعهم في السلة (agents)
+	result := r.db.Where("status = ?", status).Find(&agents)
+	if result.Error != nil {
+		// إذا حدث خطأ أثناء البحث، أعد الخطأ
+		return nil, result.Error
+	}
+
+	
+	return agents, nil
 }
