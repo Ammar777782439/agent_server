@@ -30,7 +30,7 @@ func (m *Monitor) Start() {
 	for range ticker.C {
 		log.Println("Inspector at work: Checking for offline agents...")
 
-		// المفتش لا يقوم بالفعل بنفسه، بل يطلب  
+		//  لا يقوم بالفعل بنفسه، بل يطلب منطق
 		err := m.agentLogic.MarkOfflineAgents()
 		if err != nil {
 			log.Printf("❌ Error during offline agent check: %v", err)
