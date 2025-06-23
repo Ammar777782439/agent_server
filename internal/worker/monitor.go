@@ -22,18 +22,23 @@ func NewMonitor(logic usecase.AgentUseCase) *Monitor {
 func (m *Monitor) Start() {
 	log.Println("✅ Starting offline agent monitor...")
 
-	// هذا التيكر هو الساعة التي ينظر إليها المفتش ليبدأ جولته
-	ticker := time.NewTicker(1 * time.Minute) // افحص كل دقيقة
+	
+	ticker := time.NewTicker(1 * time.Minute) 
 	defer ticker.Stop()
 
-	// حلقة لا نهائية تمثل جولات المفتش الدورية
+	
 	for range ticker.C {
 		log.Println("Inspector at work: Checking for offline agents...")
 
-		//  لا يقوم بالفعل بنفسه، بل يطلب منطق
+		
 		err := m.agentLogic.MarkOfflineAgents()
 		if err != nil {
 			log.Printf("❌ Error during offline agent check: %v", err)
 		}
 	}
+
+
+
+
+
 }
