@@ -18,18 +18,18 @@ const (
 	reportIntervalSeconds = 300 // 5 minutes
 )
 
-// AgentServer now depends on the use case layer, not the repository.
+
 type AgentServer struct {
 	pb.UnimplementedAgentServiceServer
 	agentLogic usecase.AgentUseCase
 }
 
-// NewAgentServer creates a new AgentServer with the injected business logic layer.
+
 func NewAgentServer(logic usecase.AgentUseCase) *AgentServer {
 	return &AgentServer{agentLogic: logic}
 }
 
-// RegisterAgent is now a thin layer that validates, maps, and calls the logic layer.
+
 func (s *AgentServer) RegisterAgent(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
 	
 	agentDetailsProto := req.GetAgentDetails()

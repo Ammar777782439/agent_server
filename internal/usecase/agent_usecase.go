@@ -106,6 +106,7 @@ func (uc *agentUseCase) StoreInstalledApps(agentID string, apps []model.Installe
 	return uc.repo.CreateInstalledApps(apps)
 }
 func (uc *agentUseCase) MarkOfflineAgents() error {
+
     const reportIntervalSeconds = 300 // 5 minutes
 
     // 1. تستدعي  من طبقه المخزون  كل الوكلا الذين حالتهم "ONLINE"
@@ -121,7 +122,7 @@ func (uc *agentUseCase) MarkOfflineAgents() error {
 
     log.Printf("Found %d online agents to check.", len(onlineAgents))
 
-    // 2. قم بالمرور على كل عميل وتطبيق منطق الوصفة
+    // 2. قم بالمرور على كل عميل وتطبيق منطق 
     for _, agent := range onlineAgents {
         interval := time.Duration(reportIntervalSeconds) * time.Second
         gracePeriod := interval / 10 // 10% grace period

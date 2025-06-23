@@ -8,7 +8,7 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "agent_server/proto"; 
 
-// --------------------------- Enums (تحسين) ---------------------------
+// --------------------------- Enums  ---------------------------
 enum AgentStatus {
     UNKNOWN = 0;
     ONLINE = 1;
@@ -58,7 +58,7 @@ service AgentService {
 
 // --- رسائل التسجيل والبحث والنبضة ---
 
-// رسالة موحدة تمثل العميل بكل تفاصيله
+// رسالة  تمثل العميل بكل تفاصيله
 message Agent {
     string agent_id = 1;       
     string hostname = 2;
